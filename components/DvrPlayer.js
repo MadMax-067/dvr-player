@@ -1,10 +1,10 @@
 "use client";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useCallback } from "react";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
 import "videojs-playlist";
 
-// Small style helpers for the control bar UI
+
 function pillBtn(active = false) {
   return {
     padding: "6px 12px",
@@ -65,10 +65,10 @@ export default function DvrPlayer({ files }) {
   const [dragging, setDragging] = useState(false);
   const [jumpDate, setJumpDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [jumpTime, setJumpTime] = useState('06:00:00');
-  // Editor-style timeline state
-  const [tlPps, setTlPps] = useState(2); // pixels per second
+  
+  const [tlPps, setTlPps] = useState(2); 
   const [tlViewportW, setTlViewportW] = useState(0);
-  const scrubbingRef = useRef(null); // 'playhead' | 'clip-start' | 'clip-end' | null
+  const scrubbingRef = useRef(null); 
 
   const parseStartMs = (s) => {
     const d = new Date(s.replace(" ", "T"));
@@ -111,7 +111,7 @@ export default function DvrPlayer({ files }) {
   const baseStartMs = segments.length ? segments[0].startMs : null;
   const globalDuration = useMemo(() => segments.reduce((s, x) => s + (x.duration || 0), 0), [segments]);
 
-  // Precompute cumulative start seconds for segments for the editor timeline
+  
   const segmentsAcc = useMemo(() => {
     let acc = 0;
     return segments.map((s) => {
@@ -203,12 +203,12 @@ export default function DvrPlayer({ files }) {
       player.on('pause', () => setIsPlaying(false));
       player.on('timeupdate', () => setSegCurrentTime(player.currentTime() || 0));
       player.on('loadedmetadata', () => {
-        // Re-apply zoom after source changes
+        
         const videoEl = player.el().getElementsByTagName('video')[0];
         if (videoEl) {
           applyTransform(videoEl);
         }
-        // Re-apply desired playback rate after source changes
+        
         if (rateRef.current && typeof player.playbackRate === 'function') {
           player.playbackRate(rateRef.current);
         }
@@ -218,7 +218,7 @@ export default function DvrPlayer({ files }) {
           const idx = player.playlist.currentItem();
           setCurrentItem(idx ?? 0);
           setSegCurrentTime(0);
-          // Ensure playback rate persists when playlist item changes
+          
           if (rateRef.current && typeof player.playbackRate === 'function') {
             player.playbackRate(rateRef.current);
           }
@@ -235,9 +235,9 @@ export default function DvrPlayer({ files }) {
         playerRef.current = null;
       }
     };
-  }, []);
+  }, [applyTransform]);
 
-  // ----- Editor timeline helpers -----
+  
   const secToX = (sec) => sec * tlPps;
   const xToSec = (x) => x / tlPps;
   const clampSec = (s) => Math.max(0, Math.min(globalDuration, s));
@@ -253,7 +253,7 @@ export default function DvrPlayer({ files }) {
     return { major: 600, minor: 120 };
   };
 
-  // Keep viewport width for Fit zoom and math
+  
   useEffect(() => {
     const el = timelineRef.current;
     if (!el) return;
@@ -269,12 +269,12 @@ export default function DvrPlayer({ files }) {
     const old = tlPps;
     const next = Math.max(0.05, Math.min(200, old * mult));
     if (next === old) return;
-    // Anchor zoom around given time (default current playhead)
+    
     const rect = el.getBoundingClientRect();
     const playheadSec = anchorSec != null ? anchorSec : getGlobalTime();
-    const anchorX = secToX(playheadSec) - el.scrollLeft; // position within viewport
+    const anchorX = secToX(playheadSec) - el.scrollLeft; 
     setTlPps(next);
-    // adjust scrollLeft after state applies in next microtask
+    
     requestAnimationFrame(() => {
       const newAnchorX = playheadSec * next - el.scrollLeft;
       const delta = newAnchorX - anchorX;
@@ -297,7 +297,7 @@ export default function DvrPlayer({ files }) {
     if (e.ctrlKey) {
       e.preventDefault();
       const mult = Math.exp(-e.deltaY * 0.001);
-      // anchor around cursor
+      
       const rect = el.getBoundingClientRect();
       const cursorX = e.clientX - rect.left + el.scrollLeft;
       const cursorSec = xToSec(cursorX);
@@ -318,7 +318,7 @@ export default function DvrPlayer({ files }) {
     const rect = el.getBoundingClientRect();
     const innerX = e.clientX - rect.left + el.scrollLeft;
     const sec = clampSec(xToSec(innerX));
-    // Detect handle drag vs playhead scrub
+    
     const handlePx = 6;
     const startSec = clipRange.start ?? null;
     const endSec = clipRange.end ?? null;
@@ -345,22 +345,14 @@ export default function DvrPlayer({ files }) {
     };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
-    // initial move
+    
     if (scrubbingRef.current === 'playhead') seekToGlobal(sec);
   };
 
-  // Helpers for transform/pan bounds
+  
   const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-  const applyTransform = (videoEl) => {
-    const v = videoEl || playerRef.current?.el().getElementsByTagName('video')[0];
-    if (!v) return;
-    const scale = zoomRef.current;
-    const { x, y } = constrainPan(v, scale, panRef.current);
-    panRef.current = { x, y };
-    v.style.transformOrigin = 'center center';
-    v.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
-  };
-  const constrainPan = (videoEl, scale, pan) => {
+
+  const constrainPan = useCallback((videoEl, scale, pan) => {
     const container = containerRef.current;
     if (!container) return pan;
     const cw = container.clientWidth;
@@ -369,13 +361,22 @@ export default function DvrPlayer({ files }) {
     const vh = videoEl.clientHeight;
     const scaledW = vw * scale;
     const scaledH = vh * scale;
-    // Allow panning up to the overflow beyond container
     const maxX = Math.max(0, (scaledW - cw) / 2);
     const maxY = Math.max(0, (scaledH - ch) / 2);
     return { x: clamp(pan.x, -maxX, maxX), y: clamp(pan.y, -maxY, maxY) };
-  };
+  }, []);
 
-  // Touch handlers: pinch to zoom + pan
+  const applyTransform = useCallback((videoElParam) => {
+    const v = videoElParam || playerRef.current?.el().getElementsByTagName('video')[0];
+    if (!v) return;
+    const scale = zoomRef.current;
+    const nextPan = constrainPan(v, panRef.current);
+    panRef.current = nextPan;
+    v.style.transformOrigin = 'center center';
+    v.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px) scale(${scale})`;
+  }, [constrainPan]);
+
+  
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -396,7 +397,7 @@ export default function DvrPlayer({ files }) {
         const t = e.touches[0];
         const now = Date.now();
         const last = lastTapRef.current;
-        // Double-tap to reset
+        
         if (now - last.time < 300 && Math.hypot(t.clientX - last.x, t.clientY - last.y) < 20) {
           zoomRef.current = 1;
           panRef.current = { x: 0, y: 0 };
@@ -418,7 +419,7 @@ export default function DvrPlayer({ files }) {
         const d = getDist(e.touches[0], e.touches[1]);
         const scale = clamp(start.scale * (d / start.dist), 1, 6);
         zoomRef.current = scale;
-        // Pan by mid-point delta for a natural pinch translation
+        
         const mid = getMid(e.touches[0], e.touches[1]);
         const dx = mid.x - start.mid.x;
         const dy = mid.y - start.mid.y;
@@ -440,7 +441,7 @@ export default function DvrPlayer({ files }) {
 
     const onTouchEnd = () => {
       if (lastPanPosRef.current) lastPanPosRef.current = null;
-      // When leaving pinch, keep latest scale
+      
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: true });
@@ -454,7 +455,7 @@ export default function DvrPlayer({ files }) {
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, []);
+  }, [applyTransform]);
 
   
   useEffect(() => {
@@ -471,7 +472,7 @@ export default function DvrPlayer({ files }) {
       player.playlist(playlist);
       player.playlist.autoadvance(0);
       setCurrentItem(player.playlist.currentItem() ?? 0);
-      // Apply persisted playback rate after playlist load
+      
       if (rateRef.current && typeof player.playbackRate === 'function') {
         player.playbackRate(rateRef.current);
       }
@@ -690,7 +691,7 @@ export default function DvrPlayer({ files }) {
               d.setHours(hh || 0, mm || 0, ss || 0, 0);
               const dayStart = new Date(new Date(baseStartMs).toDateString()).getTime();
               const targetMs = d.getTime();
-              // only jump within same day window; otherwise clamp
+              
               const clampedMs = Math.min(dayStart + 24*3600*1000 - 1, Math.max(dayStart, targetMs));
               const gSec = (clampedMs - baseStartMs) / 1000;
               seekToGlobal(gSec);
