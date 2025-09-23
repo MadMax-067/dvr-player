@@ -158,6 +158,33 @@ export default function DvrPlayer({ files }) {
     return { index: segments.length - 1, offset: Math.max(0, last.duration - 0.1) };
   };
 
+  
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+
+  const constrainPan = useCallback((videoEl, scale, pan) => {
+    const container = containerRef.current;
+    if (!container) return pan;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    const vw = videoEl.clientWidth;
+    const vh = videoEl.clientHeight;
+    const scaledW = vw * scale;
+    const scaledH = vh * scale;
+    const maxX = Math.max(0, (scaledW - cw) / 2);
+    const maxY = Math.max(0, (scaledH - ch) / 2);
+    return { x: clamp(pan.x, -maxX, maxX), y: clamp(pan.y, -maxY, maxY) };
+  }, []);
+
+  const applyTransform = useCallback((videoElParam) => {
+    const v = videoElParam || playerRef.current?.el().getElementsByTagName('video')[0];
+    if (!v) return;
+    const scale = zoomRef.current;
+    const nextPan = constrainPan(v, scale, panRef.current);
+    panRef.current = nextPan;
+    v.style.transformOrigin = 'center center';
+    v.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px) scale(${scale})`;
+  }, [constrainPan]);
+
   useEffect(() => {
     const init = () => {
       if (playerRef.current || !videoRef.current) return;
@@ -350,31 +377,7 @@ export default function DvrPlayer({ files }) {
   };
 
   
-  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
-
-  const constrainPan = useCallback((videoEl, scale, pan) => {
-    const container = containerRef.current;
-    if (!container) return pan;
-    const cw = container.clientWidth;
-    const ch = container.clientHeight;
-    const vw = videoEl.clientWidth;
-    const vh = videoEl.clientHeight;
-    const scaledW = vw * scale;
-    const scaledH = vh * scale;
-    const maxX = Math.max(0, (scaledW - cw) / 2);
-    const maxY = Math.max(0, (scaledH - ch) / 2);
-    return { x: clamp(pan.x, -maxX, maxX), y: clamp(pan.y, -maxY, maxY) };
-  }, []);
-
-  const applyTransform = useCallback((videoElParam) => {
-    const v = videoElParam || playerRef.current?.el().getElementsByTagName('video')[0];
-    if (!v) return;
-    const scale = zoomRef.current;
-    const nextPan = constrainPan(v, panRef.current);
-    panRef.current = nextPan;
-    v.style.transformOrigin = 'center center';
-    v.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px) scale(${scale})`;
-  }, [constrainPan]);
+  // (moved helpers above)
 
   
   useEffect(() => {
